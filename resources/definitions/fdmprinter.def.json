@@ -16,7 +16,8 @@
         "preferred_quality_type": "normal",
         "machine_extruder_trains": { "0": "fdmextruder" },
         "supports_usb_connection": true,
-        "supports_network_connection": false
+        "supports_network_connection": false,
+        "supports_abstract_color": false
     },
     "settings":
     {
@@ -28,6 +29,18 @@
             "icon": "Printer",
             "children":
             {
+                "build_volume_fan_nr":
+                {
+                    "label": "Build volume fan number",
+                    "description": "The number of the fan that cools the build volume. If this is set to 0, it's means that there is no build volume fan",
+                    "default_value": 0,
+                    "minimum_value": "0",
+                    "maximum_value": "999999",
+                    "type": "int",
+                    "settable_per_mesh": false,
+                    "settable_per_extruder": false,
+                    "settable_per_meshgroup": false
+                },
                 "machine_name":
                 {
                     "label": "Machine Type",
@@ -289,17 +302,6 @@
                     "settable_per_meshgroup": false,
                     "settable_globally": false
                 },
-                "machine_nozzle_head_distance":
-                {
-                    "label": "Nozzle Length",
-                    "description": "The height difference between the tip of the nozzle and the lowest part of the print head.",
-                    "unit": "mm",
-                    "default_value": 3,
-                    "type": "float",
-                    "settable_per_mesh": false,
-                    "settable_per_extruder": true,
-                    "settable_per_meshgroup": false
-                },
                 "machine_nozzle_expansion_angle":
                 {
                     "label": "Nozzle Angle",
@@ -507,6 +509,16 @@
                     "description": "Apply the extruder offset to the coordinate system. Affects all extruders.",
                     "type": "bool",
                     "default_value": true,
+                    "settable_per_mesh": false,
+                    "settable_per_extruder": false,
+                    "settable_per_meshgroup": false
+                },
+                "machine_start_gcode_first":
+                {
+                    "label": "Start GCode must be first",
+                    "description": "This setting controls if the start-gcode is forced to always be the first g-code. Without this option other g-code, such as a T0 can be inserted before the start g-code.",
+                    "type": "bool",
+                    "default_value": false,
                     "settable_per_mesh": false,
                     "settable_per_extruder": false,
                     "settable_per_meshgroup": false
@@ -4545,6 +4557,37 @@
                     "settable_per_mesh": false,
                     "settable_per_extruder": true
                 },
+                "build_fan_full_at_height":
+                {
+                    "label": "Build Fan Speed at Height",
+                    "description": "The height at which the fans spin on regular fan speed. At the layers below the fan speed gradually increases from Initial Fan Speed to Regular Fan Speed.",
+                    "unit": "mm",
+                    "type": "float",
+                    "default_value": 0,
+                    "minimum_value": "0",
+                    "enabled": "build_volume_fan_nr != 0",
+                    "maximum_value_warning": "10.0",
+                    "settable_per_mesh": false,
+                    "settable_per_extruder": false,
+                    "settable_per_meshgroup": false,
+                    "children":
+                    {
+                        "build_fan_full_layer":
+                        {
+                            "label": "Build Fan Speed at Layer",
+                            "description": "The layer at which the build fans spin on full fan speed. This value is calculated and rounded to a whole number.",
+                            "type": "int",
+                            "default_value": 0,
+                            "minimum_value": "0",
+                            "enabled": "build_volume_fan_nr != 0",
+                            "maximum_value_warning": "10 / resolveOrValue('layer_height')",
+                            "value": "max(1, int(math.floor((build_fan_full_at_height - resolveOrValue('layer_height_0')) / resolveOrValue('layer_height')) + 2))",
+                            "settable_per_mesh": false,
+                            "settable_per_extruder": false,
+                            "settable_per_meshgroup": false
+                        }
+                    }
+                },
                 "cool_fan_speed":
                 {
                     "label": "Fan Speed",
@@ -6031,7 +6074,7 @@
                         "none": "None"
                     },
                     "default_value": "brim",
-                    "resolve": "extruderValue(adhesion_extruder_nr, 'adhesion_type')",
+                    "resolve": "min(extruderValues('adhesion_type'), key=('raft', 'brim', 'skirt', 'none').index)",
                     "settable_per_mesh": false,
                     "settable_per_extruder": false
                 },
@@ -8890,6 +8933,111 @@
                     "description": "Outer walls of different islands in the same layer are printed in sequence. When enabled the amount of flow changes is limited because walls are printed one type at a time, when disabled the number of travels between islands is reduced because walls in the same islands are grouped.",
                     "type": "bool",
                     "default_value": true,
+                    "settable_per_mesh": true
+                },
+                "scarf_joint_seam_length":
+                {
+                    "label": "Scarf Seam Length",
+                    "description": "When greater than 0, a scarf joint will be created on the Z seam to make it less visible.",
+                    "type": "float",
+                    "default_value": 0,
+                    "minimum_value": "0",
+                    "unit": "mm",
+                    "limit_to_extruder": "wall_0_extruder_nr",
+                    "settable_per_extruder": true,
+                    "settable_per_mesh": true
+                },
+                "scarf_joint_seam_start_height_ratio":
+                {
+                    "label": "Scarf Seam Start Height",
+                    "description": "This is the ratio over the total layer height where the scarf joint seam will start.",
+                    "type": "float",
+                    "default_value": 0,
+                    "minimum_value": 0,
+                    "maximum_value": 100.0,
+                    "unit": "%",
+                    "limit_to_extruder": "wall_0_extruder_nr",
+                    "settable_per_extruder": true,
+                    "settable_per_mesh": true
+                },
+                "scarf_split_distance":
+                {
+                    "label": "Scarf Seam Split Distance",
+                    "description": "This is the maximum length of an extrusion path when splitting a longer path to apply the scarf seam. A smaller distance will create a more precise but also more verbose G-Code.",
+                    "type": "float",
+                    "default_value": 1.0,
+                    "minimum_value": 0.1,
+                    "maximum_value": 100.0,
+                    "unit": "mm",
+                    "limit_to_extruder": "wall_0_extruder_nr",
+                    "settable_per_extruder": true,
+                    "settable_per_mesh": true
+                },
+                "wall_0_start_speed_ratio":
+                {
+                    "label": "Outer Wall Start Speed Ratio",
+                    "description": "This is the ratio of the top speed to start with when printing an outer wall.",
+                    "type": "float",
+                    "default_value": 100.0,
+                    "minimum_value": 0.0,
+                    "maximum_value": 100.0,
+                    "unit": "%",
+                    "limit_to_extruder": "wall_0_extruder_nr",
+                    "settable_per_extruder": true,
+                    "settable_per_mesh": true
+                },
+                "wall_0_acceleration":
+                {
+                    "label": "Outer Wall Acceleration",
+                    "description": "This is the acceleration with which to reach the top speed when printing an outer wall.",
+                    "enabled": "wall_0_start_speed_ratio < 100.0",
+                    "type": "float",
+                    "default_value": 20.0,
+                    "minimum_value": 1.0,
+                    "maximum_value": 1000.0,
+                    "unit": "mm/s\u00b2",
+                    "limit_to_extruder": "wall_0_extruder_nr",
+                    "settable_per_extruder": true,
+                    "settable_per_mesh": true
+                },
+                "wall_0_end_speed_ratio":
+                {
+                    "label": "Outer Wall End Speed Ratio",
+                    "description": "This is the ratio of the top speed to end with when printing an outer wall.",
+                    "type": "float",
+                    "default_value": 100.0,
+                    "minimum_value": 0.0,
+                    "maximum_value": 100.0,
+                    "unit": "%",
+                    "limit_to_extruder": "wall_0_extruder_nr",
+                    "settable_per_extruder": true,
+                    "settable_per_mesh": true
+                },
+                "wall_0_deceleration":
+                {
+                    "label": "Outer Wall Deceleration",
+                    "description": "This is the deceleration with which to end printing an outer wall.",
+                    "enabled": "wall_0_end_speed_ratio < 100.0",
+                    "type": "float",
+                    "default_value": 20.0,
+                    "minimum_value": 1.0,
+                    "maximum_value": 1000.0,
+                    "unit": "mm/s\u00b2",
+                    "limit_to_extruder": "wall_0_extruder_nr",
+                    "settable_per_extruder": true,
+                    "settable_per_mesh": true
+                },
+                "wall_0_speed_split_distance":
+                {
+                    "label": "Outer Wall Speed Split Distance",
+                    "description": "This is the maximum length of an extrusion path when splitting a longer path to apply the outer wall acceleration/deceleration. A smaller distance will create a more precise but also more verbose G-Code.",
+                    "type": "float",
+                    "default_value": 1.0,
+                    "minimum_value": 0.1,
+                    "maximum_value": 100.0,
+                    "unit": "mm",
+                    "limit_to_extruder": "wall_0_extruder_nr",
+                    "settable_per_extruder": true,
                     "settable_per_mesh": true
                 }
             }
